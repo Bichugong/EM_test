@@ -1,0 +1,205 @@
+definitions:
+  model.Person:
+    properties:
+      age:
+        type: integer
+      created_at:
+        type: string
+      gender:
+        type: string
+      id:
+        type: integer
+      name:
+        type: string
+      nationality:
+        type: string
+      patronymic:
+        type: string
+      surname:
+        type: string
+      updated_at:
+        type: string
+    type: object
+  model.PersonInput:
+    properties:
+      name:
+        type: string
+      patronymic:
+        type: string
+      surname:
+        type: string
+    required:
+    - name
+    - surname
+    type: object
+info:
+  contact: {}
+  description: API for managing people data with enrichment
+  title: People API
+  version: "1.0"
+paths:
+  /persons:
+    get:
+      consumes:
+      - application/json
+      description: Get list of persons with filtering and pagination
+      parameters:
+      - description: Gender filter
+        in: query
+        name: gender
+        type: string
+      - description: Nationality filter
+        in: query
+        name: nationality
+        type: string
+      - description: Minimum age
+        in: query
+        name: age_from
+        type: integer
+      - description: Maximum age
+        in: query
+        name: age_to
+        type: integer
+      - default: 1
+        description: Page number
+        in: query
+        name: page
+        type: integer
+      - default: 10
+        description: Items per page
+        in: query
+        name: limit
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/model.Person'
+            type: array
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Get filtered persons list
+      tags:
+      - persons
+    post:
+      consumes:
+      - application/json
+      description: Принимает ФИО и сохраняет в БД с доп. данными (возраст, пол, национальность)
+      parameters:
+      - description: ФИО человека
+        in: body
+        name: input
+        required: true
+        schema:
+          $ref: '#/definitions/model.PersonInput'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/model.Person'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Создать новую запись о человеке
+      tags:
+      - persons
+  /persons/{id}:
+    delete:
+      consumes:
+      - application/json
+      description: Удаляет запись о человеке по его ID
+      parameters:
+      - description: ID человека
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: No Content
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Удалить человека
+      tags:
+      - persons
+    put:
+      consumes:
+      - application/json
+      description: Обновляет данные о человеке по его ID
+      parameters:
+      - description: ID человека
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: Обновленные данные
+        in: body
+        name: input
+        required: true
+        schema:
+          $ref: '#/definitions/model.Person'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/model.Person'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Обновить данные о человеке
+      tags:
+      - persons
+swagger: "2.0"

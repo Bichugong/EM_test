@@ -2,58 +2,112 @@ package service
 
 import (
 	"context"
-	"errors"
-
-	"em_test/internal/entity"
+	"em_test/internal/api"
+	"em_test/internal/logger"
+	"em_test/internal/model"
 	"em_test/internal/repository"
+
+	"go.uber.org/zap"
 )
 
-var (
-	ErrPersonNotFound = errors.New("person not found")
-)
-
-type PersonService struct {
-	repo     *repository.PersonRepository
-	enricher *EnricherService
+type PersonFilter struct {
+	Gender      string
+	Nationality string
+	AgeFrom     int
+	AgeTo       int
+	Page        int
+	Limit       int
 }
 
-func NewPersonService(repo *repository.PersonRepository, enricher *EnricherService) *PersonService {
-	return &PersonService{repo: repo, enricher: enricher}
+type PersonService interface {
+	Create(ctx context.Context, input model.PersonInput) (model.Person, error)
+	GetAll(ctx context.Context, filter model.PersonFilter) ([]model.Person, error)
+	Update(ctx context.Context, id int, person model.Person) (model.Person, error)
+	Delete(ctx context.Context, id int) error
 }
 
-func (s *PersonService) CreatePerson(ctx context.Context, input entity.PersonInput) (*entity.Person, error) {
+type personService struct {
+	repo       repository.PersonRepository
+	enrichment *api.EnrichmentAPI
+}
+
+func NewPersonService(repo repository.PersonRepository, enrichment *api.EnrichmentAPI) PersonService {
+	logger.Logger.Debug("Creating new person service", zap.Any("repo", repo), zap.Any("enrichment", enrichment))
+	return &personService{
+		repo:       repo,
+		enrichment: enrichment,
+	}
+}
+
+func (s *personService) Create(ctx context.Context, input model.PersonInput) (model.Person, error) {
+	logger.Logger.Debug("Creating person", zap.Any("input", input))
+
+	person := model.Person{
+		Name:       input.Name,
+		Surname:    input.Surname,
+		Patronymic: input.Patronymic,
+	}
+
 	// Обогащение данных
-	age, gender, nationality, err := s.enricher.Enrich(input.Name)
+	age, err := s.enrichment.GetAge(input.Name)
 	if err != nil {
-		return nil, err
+		logger.Logger.Warn("Failed to get age", zap.Error(err))
+	} else if age > 0 {
+		person.Age = age
+		logger.Logger.Info("Age enrichment successful", zap.Int("age", age))
 	}
 
-	p := entity.Person{
-		Name:        input.Name,
-		Surname:     input.Surname,
-		Patronymic:  input.Patronymic,
-		Age:         age,
-		Gender:      gender,
-		Nationality: nationality,
-	}
-
-	id, err := s.repo.Create(ctx, p)
+	gender, err := s.enrichment.GetGender(input.Name)
 	if err != nil {
-		return nil, err
+		logger.Logger.Warn("Failed to get gender", zap.Error(err))
+	} else if gender != "" {
+		person.Gender = gender
+		logger.Logger.Info("Gender enrichment successful", zap.String("gender", gender))
 	}
 
-	p.ID = id
-	return &p, nil
+	nationality, err := s.enrichment.GetNationality(input.Name)
+	if err != nil {
+		logger.Logger.Warn("Failed to get nationality", zap.Error(err))
+	} else if nationality != "" {
+		person.Nationality = nationality
+		logger.Logger.Info("Nationality enrichment successful", zap.String("nationality", nationality))
+	}
+
+	// Сохраняем в БД
+	result, err := s.repo.Create(ctx, person)
+	if err != nil {
+		logger.Logger.Error("Failed to create person", zap.Error(err))
+	} else {
+		logger.Logger.Info("Person created successfully", zap.Int("id", result.ID))
+	}
+
+	return result, err
 }
 
-func (s *PersonService) GetPersons(ctx context.Context, filter entity.PersonFilter) ([]entity.Person, error) {
-	return s.repo.GetByFilter(ctx, filter)
+func (s *personService) GetAll(ctx context.Context, filter model.PersonFilter) ([]model.Person, error) {
+	logger.Logger.Debug("Getting all persons", zap.Any("filter", filter))
+	offset := (filter.Page - 1) * filter.Limit
+	persons, err := s.repo.GetAll(ctx, filter, offset)
+	if err == nil {
+		logger.Logger.Info("Persons retrieved successfully", zap.Int("count", len(persons)))
+	}
+	return persons, err
 }
 
-func (s *PersonService) UpdatePerson(ctx context.Context, id int, input entity.PersonInput) (*entity.Person, error) {
-	// Проверка существования
-	persons, err := s.repo.GetByFilter(ctx, entity.PersonFilter{ID: &id, PageSize: 1})
-	if err != nil || len(persons) == 0 {
-		return nil, ErrPersonNotFound
+func (s *personService) Update(ctx context.Context, id int, person model.Person) (model.Person, error) {
+	logger.Logger.Debug("Updating person", zap.Int("id", id), zap.Any("person", person))
+	updatedPerson, err := s.repo.Update(ctx, id, person)
+	if err == nil {
+		logger.Logger.Info("Person updated successfully", zap.Int("id", id))
 	}
+	return updatedPerson, err
+}
+
+func (s *personService) Delete(ctx context.Context, id int) error {
+	logger.Logger.Debug("Deleting person", zap.Int("id", id))
+	err := s.repo.Delete(ctx, id)
+	if err == nil {
+		logger.Logger.Info("Person deleted successfully", zap.Int("id", id))
+	}
+	return err
 }
